@@ -1,4 +1,4 @@
-# Udistrital Web Backend
+# Web Institucional Backend
 
 Backend headless de la Universidad Distrital basado en Drupal 11, JSON:API,
 Composer y Docker.
@@ -30,7 +30,7 @@ composer install
 Puedes construir la imagen del backend desde este repositorio:
 
 ```bash
-docker build -t udistrital-backend .
+docker build -t web_institucional_backend .
 ```
 
 Para ejecutarlo necesitas conectarlo a una instancia MySQL accesible. Para
@@ -42,18 +42,18 @@ infraestructura, porque también inicia MySQL y conecta el frontend.
 La estructura esperada por el Compose local es:
 
 ```text
-udistrital-local/
+web_institucional/
 ├── docker-compose.yml
-├── backend-udistrital/
-└── frontend-udistrital/
+├── web_institucional_backend/
+└── web_institucional_frontend/
 ```
 
 Desde el directorio que contiene `docker-compose.yml`:
 
 ```bash
-cp backend-udistrital/.env.example backend-udistrital/.env
-cp backend-udistrital/.env .env
-# Edita backend-udistrital/.env antes de continuar.
+cp web_institucional_backend/.env.example web_institucional_backend/.env
+cp web_institucional_backend/.env .env
+# Edita web_institucional_backend/.env antes de continuar.
 docker compose build backend
 docker compose up -d db backend
 ```
@@ -71,7 +71,7 @@ instalación una sola vez:
 
 ```bash
 set -a
-source backend-udistrital/.env
+source web_institucional_backend/.env
 set +a
 
 docker compose exec backend vendor/bin/drush site:install standard \
