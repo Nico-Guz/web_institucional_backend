@@ -1,4 +1,4 @@
-# Udistrital Web Backend
+# Web Institucional Backend
 
 Backend headless de la Universidad Distrital basado en Drupal 11, JSON:API,
 Composer y Docker.
