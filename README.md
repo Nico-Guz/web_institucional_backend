@@ -11,31 +11,32 @@ Composer y Docker.
 
 ## Instalación local
 
-Desde el directorio de este repositorio:
+Desde la raíz que contiene ambos repositorios y `docker-compose.yml`:
 
 ```bash
-cp .env.example .env
+cp web_institucional_backend/.env.example web_institucional_backend/.env
 ```
 
-Edita `.env` y define contraseñas locales para `DB_PASSWORD`,
+Edita `web_institucional_backend/.env` y define contraseñas locales para `DB_PASSWORD`,
 `DB_ROOT_PASSWORD` y un valor aleatorio para `HASH_SALT`.
 
-Instala las dependencias si trabajarás directamente con PHP o tu IDE las
-necesita:
+Si trabajas directamente con PHP o tu IDE necesita las dependencias, ejecuta
+desde `web_institucional_backend/`:
 
 ```bash
 composer install
 ```
 
-Puedes construir la imagen del backend desde este repositorio:
+La imagen y los servicios locales se construyen desde la raíz que contiene
+`docker-compose.yml`:
 
 ```bash
-docker build -t web_institucional_backend .
+docker compose build backend frontend
 ```
 
-Para ejecutarlo necesitas conectarlo a una instancia MySQL accesible. Para
-desarrollo local se recomienda usar el `docker-compose.yml` del repositorio de
-infraestructura, porque también inicia MySQL y conecta el frontend.
+Para ejecutar solo el backend fuera de este Compose necesitas conectarlo a una
+instancia MySQL accesible. Para el flujo completo local usa el Compose de la
+raíz, que inicia MySQL, Drupal y el frontend.
 
 ## Integración con Docker Compose
 
@@ -51,11 +52,9 @@ web_institucional/
 Desde el directorio que contiene `docker-compose.yml`:
 
 ```bash
-cp web_institucional_backend/.env.example web_institucional_backend/.env
-cp web_institucional_backend/.env .env
 # Edita web_institucional_backend/.env antes de continuar.
-docker compose build backend
-docker compose up -d db backend
+docker compose config
+docker compose up -d --build db backend frontend
 ```
 
 El servicio queda disponible en:
@@ -63,6 +62,11 @@ El servicio queda disponible en:
 - Drupal: http://localhost:8080
 - JSON:API: http://localhost:8080/jsonapi
 - Login administrativo: http://localhost:8080/user/login
+
+Las imágenes públicas cargadas en Drupal se conservan en el volumen
+`drupal_files` y se sirven desde
+`http://localhost:8080/sites/default/files/`. El frontend usa esta URL desde
+el navegador; S3 no es necesario durante el desarrollo local.
 
 ## Primera instalación
 
@@ -132,6 +136,13 @@ No subas al repositorio:
 - `web/sites/default/files/`
 - Credenciales, certificados o claves privadas
 
+En Compose, los directorios `web/sites/default/files` y
+`web/sites/default/private` se conservan en volúmenes Docker separados. Una
+restauración de base de datos debe incluir también los archivos subidos; los
+binarios no se almacenan en la base de datos ni en Git. En producción usa
+almacenamiento persistente compartido, como EFS, o un flujo de archivos hacia
+S3.
+
 ## Variables principales
 
 | Variable | Uso |
@@ -147,3 +158,23 @@ No subas al repositorio:
 
 En producción, las variables deben gestionarse mediante secretos de AWS, no
 mediante archivos `.env` dentro de la imagen.
+
+## Despliegue en AWS
+
+La imagen de este repositorio se publica en Amazon ECR y se ejecuta en ECS
+Fargate detrás de un Application Load Balancer. La base de datos de producción
+debe ser Amazon RDS for MySQL; el servicio `db` de este Compose es únicamente
+para desarrollo local. Inyecta en la task definition `DB_DATABASE`,
+`DB_USERNAME`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`, `HASH_SALT` y
+`TRUSTED_HOST_PATTERN` desde AWS Secrets Manager o Systems Manager Parameter
+Store.
+
+El balanceador debe comprobar `GET /user/login` en el puerto 80. El frontend
+necesita acceso HTTPS al dominio público del balanceador y a los recursos
+JSON:API y archivos públicos de Drupal. Si los archivos se mantienen en
+Drupal, el balanceador debe exponer también `/sites/default/files/`; si se
+migran a S3, Drupal debe devolver las URLs públicas del bucket o de CloudFront.
+
+El `Dockerfile` usa la imagen `composer:2` únicamente como etapa de compilación
+para copiar Composer y construir dependencias. No se crea un servicio Composer
+en Compose: el runtime del backend es un único contenedor PHP-FPM + Nginx.
