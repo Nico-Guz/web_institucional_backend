@@ -1,7 +1,8 @@
 # Web Institucional Backend
 
 Backend headless de la Universidad Distrital basado en Drupal 11, JSON:API,
-Composer y Docker.
+Composer y Docker. Este repositorio contiene exclusivamente el CMS, su
+configuración y su imagen de ejecución.
 
 ## Requisitos
 
@@ -9,7 +10,7 @@ Composer y Docker.
 - Git
 - Composer 2.x y PHP 8.3+ solo si se trabajará fuera de Docker
 
-## Instalación local
+## Desarrollo local
 
 Desde la raíz que contiene ambos repositorios y `docker-compose.yml`:
 
@@ -27,16 +28,16 @@ desde `web_institucional_backend/`:
 composer install
 ```
 
-La imagen y los servicios locales se construyen desde la raíz que contiene
+La imagen del backend se construye desde la raíz que contiene
 `docker-compose.yml`:
 
 ```bash
-docker compose build backend frontend
+docker compose build backend
 ```
 
-Para ejecutar solo el backend fuera de este Compose necesitas conectarlo a una
-instancia MySQL accesible. Para el flujo completo local usa el Compose de la
-raíz, que inicia MySQL, Drupal y el frontend.
+Para ejecutar Drupal se necesita una instancia MySQL accesible. En el entorno
+local compartido, el Compose de la raíz crea MySQL y publica Drupal en
+`http://localhost:8080`.
 
 ## Integración con Docker Compose
 
@@ -54,7 +55,7 @@ Desde el directorio que contiene `docker-compose.yml`:
 ```bash
 # Edita web_institucional_backend/.env antes de continuar.
 docker compose config
-docker compose up -d --build db backend frontend
+docker compose up -d --build db backend
 ```
 
 El servicio queda disponible en:
@@ -86,12 +87,13 @@ docker compose exec backend vendor/bin/drush site:install standard \
   --locale=es -y
 
 docker compose exec backend vendor/bin/drush en jsonapi -y
+docker compose exec backend vendor/bin/drush en redirect -y
 docker compose exec backend vendor/bin/drush cache:rebuild
 ```
 
 Cambia la contraseña administrativa inmediatamente después de la instalación.
 
-## Configuración
+## Configuración de Drupal
 
 - `web/sites/default/settings.php` obtiene la conexión de base de datos,
   `hash_salt`, hosts confiables y la ruta de sincronización desde variables de
@@ -113,15 +115,14 @@ Para aplicar un despliegue completo:
 docker compose exec backend vendor/bin/drush deploy
 ```
 
-Para exportar cambios hechos en Drupal:
+Para exportar cambios hechos en Drupal desde la raíz del entorno Compose:
 
 ```bash
 docker compose exec backend vendor/bin/drush config:export -y
-docker compose exec backend tar -cf - -C /var/www/html config/sync | tar -xf -
+docker compose exec backend tar -cf - -C /var/www/html config/sync | tar -xf - -C web_institucional_backend
 ```
 
-Después copia los archivos exportados a `config/sync/` de este repositorio,
-revísalos y haz commit.
+Después revisa los archivos exportados en `config/sync/` antes de publicarlos.
 
 ## Contenido y archivos
 
@@ -137,11 +138,27 @@ No subas al repositorio:
 - Credenciales, certificados o claves privadas
 
 En Compose, los directorios `web/sites/default/files` y
-`web/sites/default/private` se conservan en volúmenes Docker separados. Una
-restauración de base de datos debe incluir también los archivos subidos; los
-binarios no se almacenan en la base de datos ni en Git. En producción usa
-almacenamiento persistente compartido, como EFS, o un flujo de archivos hacia
-S3.
+`web/sites/default/private` se conservan en volúmenes Docker separados. Los
+binarios no se almacenan en la base de datos ni en Git.
+
+## Archivos y almacenamiento S3
+
+En desarrollo local, Drupal sirve los archivos públicos desde el volumen
+`drupal_files`. En producción, los archivos públicos deben almacenarse en S3
+y Drupal debe devolver sus URLs públicas mediante JSON:API. La alternativa
+recomendada es:
+
+1. Drupal recibe el archivo y lo guarda en un bucket S3 privado.
+2. CloudFront sirve los objetos mediante Origin Access Control (OAC).
+3. Drupal genera URLs con el dominio de CloudFront.
+4. El frontend consume esas URLs sin copiar los archivos a su propio bucket.
+
+El bucket de archivos debe tener permisos privados y una política que permita
+acceso únicamente desde la distribución CloudFront. La integración de Drupal
+con S3 todavía debe configurarse para producción, junto con sus credenciales y
+la política del bucket. No se deben guardar credenciales en este repositorio.
+La imagen actual conserva el almacenamiento local para desarrollo; antes del
+despliegue se debe instalar y configurar el adaptador S3 elegido para Drupal.
 
 ## Variables principales
 
@@ -159,7 +176,11 @@ S3.
 En producción, las variables deben gestionarse mediante secretos de AWS, no
 mediante archivos `.env` dentro de la imagen.
 
-## Despliegue en AWS
+El origen permitido por CORS debe incluir el dominio real del frontend cuando
+se conozca. La configuración versionada actual permite `http://localhost:3000`
+para desarrollo local.
+
+## Despliegue del backend en AWS
 
 La imagen de este repositorio se publica en Amazon ECR y se ejecuta en ECS
 Fargate detrás de un Application Load Balancer. La base de datos de producción
@@ -170,11 +191,17 @@ para desarrollo local. Inyecta en la task definition `DB_DATABASE`,
 Store.
 
 El balanceador debe comprobar `GET /user/login` en el puerto 80. El frontend
-necesita acceso HTTPS al dominio público del balanceador y a los recursos
-JSON:API y archivos públicos de Drupal. Si los archivos se mantienen en
-Drupal, el balanceador debe exponer también `/sites/default/files/`; si se
-migran a S3, Drupal debe devolver las URLs públicas del bucket o de CloudFront.
+necesita acceso HTTPS al dominio público de la API y a JSON:API. Las imágenes
+de producción no deben depender del sistema de archivos local del contenedor:
+Drupal debe devolver URLs del dominio CloudFront que sirve el bucket S3.
 
 El `Dockerfile` usa la imagen `composer:2` únicamente como etapa de compilación
 para copiar Composer y construir dependencias. No se crea un servicio Composer
 en Compose: el runtime del backend es un único contenedor PHP-FPM + Nginx.
+
+## Integración con el frontend
+
+El frontend independiente consume la API publicada por este backend durante su
+build estático. Drupal debe exponer JSON:API por HTTPS y devolver aliases,
+metadata y URLs de imágenes válidas. La configuración y el código de Next.js
+se mantienen en `web_institucional_frontend/`.

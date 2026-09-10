@@ -23,6 +23,7 @@
         "drupal/core-recommended": "^11.4",
         "drupal/jsonapi_extras": "^3.28",
         "drupal/pathauto": "^1.15",
+        "drupal/redirect": "^1.10",
         "drush/drush": "^13.7",
         "vlucas/phpdotenv": "^5.7"
     },
